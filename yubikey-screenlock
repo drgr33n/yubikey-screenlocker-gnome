@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Small script to lock all gnome sessions
+# Zarren Spry <zarrenspry@gmail.com>
+
+# Declare empty log_file variable
+LOG_FILE=""
+LOCK_FILE="/tmp/yubikey-nolock"
+
+function usage(){
+    echo -e """$0 -h [-l|-u] -o /test/out.log\n
+-h: Displays this message.
+-l: Lock screen
+-d: Disable locker
+-e: Enable locker
+-o: Output to logfile, default is to log to syslog.
+"""
+}
+
+function write_log(){
+    if [[ -z "${2}" ]]; then
+        echo "${1}" | logger
+    else
+        echo -e "${EPOCHSECONDS}: ${1}" >> ${LOG_FILE} 2>&1
+    fi
+}
+
+function lock_screen(){
+    for i in $(loginctl list-sessions --no-legend | awk '{ print $1 }'); do
+	ID=$(loginctl show-session --no-legend ${i} | grep User | cut -d '=' -f2)
+	USER=$(loginctl show-session --no-legend ${i} | grep Name | cut -d '=' -f2)
+	export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${ID}/bus
+    	if su -c "dbus-send --session --dest=org.gnome.ScreenSaver /ScreenSaver org.freedesktop.ScreenSaver.GetActive" ${USER}; then
+        	write_log "Locking screen for user ${USER}" ${LOG_FILE}
+        	su -c "dbus-send --session --type=method_call --dest=org.gnome.ScreenSaver /org/gnome/ScreenSaver org.gnome.ScreenSaver.Lock" ${USER} || \
+        	write_log "ERROR: Failed to lock screen for ${USER}" ${LOG_FILE}
+    	else
+        	write_log "Screen not active for user ${USER}" ${LOG_FILE}
+    	fi
+    done
+}
+
+
+while getopts ":ho:lde" opt; do
+    case ${opt} in
+        h) 
+            usage
+            exit 0
+            ;;
+        o)
+            LOG_FILE="${OPTARG}"
+            ;;
+        l)
+            ACTION="lock"
+            ;;
+        d)
+            ACTION="disable_lock"
+            ;;
+        e)
+            ACTION="enable_lock"
+            ;;
+        \?)
+            usage
+            exit 0
+            ;;
+    esac
+done
+if (( $OPTIND == 1 )); then
+    usage
+    exit 0
+fi
+
+if [ "${ACTION}" == "lock" ] && [ ! -f "${LOCK_FILE}" ]; then
+    lock_screen
+elif [ "${ACTION}" == "disable_lock" ] && [ ! -f "${LOCK_FILE}" ]; then
+    touch ${LOCK_FILE}
+elif [ "${ACTION}" == "enable_lock" ] && [ -f "${LOCK_FILE}" ]; then
+    rm ${LOCK_FILE}
+fi

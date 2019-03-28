@@ -1,0 +1,1 @@
+ACTION=="remove", SUBSYSTEM=="usb", ENV{ID_VENDOR_FROM_DATABASE}=="Yubico.com", RUN+="/usr/bin/yubikey-screenlock -l -o /var/log/yubikey-screenlock.log"
